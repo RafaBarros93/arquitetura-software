@@ -26,6 +26,9 @@ api = Api(app, title="API REST/HTTP2", version="1.0", description="Documentaçã
 # Criar um namespace para os endpoints
 ns_produtos = api.namespace('produtos', description='Operações relacionadas a produtos')
 
+# Criar um namespace para os endpoints de pedidos
+ns_pedidos = api.namespace('pedidos', description='Operações relacionadas a pedidos')
+
 # Atualizar os endpoints para usar o namespace do Flask-RESTx
 @ns_produtos.route('/')
 class ProdutoLista(Resource):
@@ -49,8 +52,61 @@ class ProdutoItem(Resource):
             return jsonify(prod.to_dict())
         return jsonify({"erro": "Produto não encontrado"}), 404
 
+@ns_pedidos.route('/')
+class PedidoLista(Resource):
+    def get(self):
+        """Lista todos os pedidos"""
+        return jsonify([p.to_dict() for p in repo_pedidos.listar_todos()])
+
+    def post(self):
+        """Cria um novo pedido"""
+        dados = request.json
+        ped = Pedido()
+        for cod in dados.get('produtos', []):
+            prod = repo_produtos.obter_por_id(cod)
+            if prod:
+                ped.adicionar_produto(prod)
+        repo_pedidos.adicionar(ped)
+        return jsonify(ped.to_dict()), 201
+
+@ns_pedidos.route('/<string:codigo>')
+class PedidoItem(Resource):
+    def get(self, codigo):
+        """Obtém um pedido pelo código"""
+        ped = repo_pedidos.obter_por_id(codigo)
+        if ped:
+            return jsonify(ped.to_dict())
+        return jsonify({"erro": "Pedido não encontrado"}), 404
+
+@ns_pedidos.route('/<string:codigo>/produtos')
+class PedidoProdutos(Resource):
+    def post(self, codigo):
+        """Adiciona um produto a um pedido"""
+        ped = repo_pedidos.obter_por_id(codigo)
+        if not ped:
+            return jsonify({"erro": "Pedido não encontrado"}), 404
+        dados = request.json
+        prod = repo_produtos.obter_por_id(dados.get('codigo_produto'))
+        if not prod:
+            return jsonify({"erro": "Produto não encontrado"}), 404
+        ped.adicionar_produto(prod)
+        repo_pedidos.atualizar(codigo, ped)
+        return jsonify(ped.to_dict())
+
+@ns_pedidos.route('/<string:codigo>/produtos/<string:codigo_produto>')
+class PedidoProdutoItem(Resource):
+    def delete(self, codigo, codigo_produto):
+        """Remove um produto de um pedido"""
+        ped = repo_pedidos.obter_por_id(codigo)
+        if not ped:
+            return jsonify({"erro": "Pedido não encontrado"}), 404
+        ped.remover_produto(codigo_produto)
+        repo_pedidos.atualizar(codigo, ped)
+        return '', 204
+
 # Registrar o namespace na API
 api.add_namespace(ns_produtos, path='/api/produtos')
+api.add_namespace(ns_pedidos, path='/api/pedidos')
 
 # Dados iniciais
 def seed():
